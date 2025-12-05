@@ -2,124 +2,110 @@
 
 use Illuminate\Support\Facades\Route;
 
-// ========================================
-// 1. PUBLIC ROUTES
-// ========================================
-Route::get('/', function () {
-    return view('index');
-})->name('home');
+Route::view('/', 'welcome');
 
-// ========================================
-// 2. USER AUTH (Transporter / Agent)
-// ========================================
-//Route::middleware('guest')->group(function () {
-    Route::get('/signup', [App\Http\Controllers\Auth\AuthController::class, 'showSignup'])->name('signup');
-    Route::post('/signup', [App\Http\Controllers\Auth\AuthController::class, 'signup']);
-    Route::get('/login', [App\Http\Controllers\Auth\AuthController::class, 'showLogin'])->name('login');
-    Route::post('/login', [App\Http\Controllers\Auth\AuthController::class, 'login']);
-//});
+// Public Routes (accessible to all visitors)
+Route::get('/tours', \App\Livewire\Public\BrowseTours::class)->name('public.tours');
+Route::get('/vehicles', \App\Livewire\Public\BrowseVehicles::class)->name('public.vehicles');
 
-Route::post('/logout', [App\Http\Controllers\Auth\AuthController::class, 'logout'])->name('logout');
+// Static Pages (Dynamic Content)
+Route::get('/about', \App\Livewire\Public\ShowPage::class)->name('pages.about');
+Route::get('/contact', \App\Livewire\Public\ShowPage::class)->name('pages.contact');
+Route::get('/privacy-policy', \App\Livewire\Public\ShowPage::class)->name('pages.privacy');
+Route::get('/terms-of-service', \App\Livewire\Public\ShowPage::class)->name('pages.terms');
+Route::get('/disclaimer', \App\Livewire\Public\ShowPage::class)->name('pages.disclaimer');
+Route::get('/sitemap', \App\Livewire\Public\ShowPage::class)->name('pages.sitemap');
+Route::get('/cookie-policy', \App\Livewire\Public\ShowPage::class)->name('pages.cookie');
+Route::get('/author', \App\Livewire\Public\ShowPage::class)->name('pages.author');
+Route::get('/dmca', \App\Livewire\Public\ShowPage::class)->name('pages.dmca');
 
-// Password Reset
-Route::get('/password/forgot', [App\Http\Controllers\Auth\PasswordResetController::class, 'showForgot'])->name('password.forgot');
-Route::post('/password/forgot', [App\Http\Controllers\Auth\PasswordResetController::class, 'sendResetLink']);
-Route::get('/password/reset/{token}', [App\Http\Controllers\Auth\PasswordResetController::class, 'showReset'])->name('password.reset');
-Route::post('/password/reset', [App\Http\Controllers\Auth\PasswordResetController::class, 'reset']);
+// Dashboard Redirection Logic
+Route::get('dashboard', function () {
+    $user = auth()->user();
 
-// ========================================
-// 3. TRANSPORTER PANEL
-// ========================================
-Route::middleware(['auth:transporter'])->prefix('transporter')->name('transporter.')->group(function () {
-    Route::get('/dashboard', [App\Http\Controllers\Transporter\VehicleController::class, 'index'])->name('dashboard');
-    Route::get('/vehicles/create', [App\Http\Controllers\Transporter\VehicleController::class, 'create'])->name('vehicles.create');
-    Route::post('/vehicles', [App\Http\Controllers\Transporter\VehicleController::class, 'store'])->name('vehicles.store');
-    Route::get('/vehicles/{id}/edit', [App\Http\Controllers\Transporter\VehicleController::class, 'edit'])->name('vehicles.edit');
-    Route::put('/vehicles/{id}', [App\Http\Controllers\Transporter\VehicleController::class, 'update'])->name('vehicles.update');
-    Route::delete('/vehicles/{id}', [App\Http\Controllers\Transporter\VehicleController::class, 'destroy'])->name('vehicles.destroy');
+    return match ($user->role) {
+        'transporter' => redirect()->route('transporter.dashboard'),
+        'agent' => redirect()->route('agent.dashboard'),
+        'admin', 'operator' => redirect()->route('admin.dashboard'),
+        default => view('dashboard'),
+    };
+})->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::view('profile', 'profile')
+    ->middleware(['auth'])
+    ->name('profile');
+
+// Fallback for serving storage files when symlink fails
+Route::get('/uploads/{path}', function ($path) {
+    $filePath = storage_path('app/public/' . $path);
+    if (!file_exists($filePath)) {
+        abort(404);
+    }
+    return response()->file($filePath);
+})->where('path', '.*')->name('storage.serve');
+
+// Admin Authentication Routes (Guest)
+Route::middleware('guest')->group(function () {
+    Route::get('admin/login', [\App\Http\Controllers\Admin\AdminAuthController::class, 'showLoginForm'])->name('admin.login');
+    Route::post('admin/login', [\App\Http\Controllers\Admin\AdminAuthController::class, 'login']);
+
+    // Super Admin Login (Alias)
+    Route::get('ss/admin/login', [\App\Http\Controllers\Admin\AdminAuthController::class, 'showLoginForm'])->name('super.admin.login');
+    Route::post('ss/admin/login', [\App\Http\Controllers\Admin\AdminAuthController::class, 'login'])->name('super.admin.login.post');
 });
 
-// ========================================
-// 4. AGENT PANEL
-// ========================================
-Route::middleware(['auth:agent'])->prefix('agent')->name('agent.')->group(function () {
-    Route::get('/dashboard', [App\Http\Controllers\Agent\SearchController::class, 'search'])->name('dashboard');
-    Route::get('/search', [App\Http\Controllers\Agent\SearchController::class, 'search'])->name('search');
-    Route::get('/company-listings', [App\Http\Controllers\Agent\CompanyListController::class, 'index'])->name('company.listings');
+// Admin Logout (Authenticated)
+Route::post('admin/logout', [\App\Http\Controllers\Admin\AdminAuthController::class, 'logout'])
+    ->middleware('auth')
+    ->name('admin.logout');
+
+// Generic Logout (All Users)
+Route::post('logout', function (\App\Livewire\Actions\Logout $logout) {
+    $logout();
+    return redirect('/');
+})->name('logout');
+
+// Admin Routes
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::view('admin/dashboard', 'admin.dashboard')->name('admin.dashboard');
+    Route::get('admin/approvals', \App\Livewire\Admin\PendingApprovals::class)->middleware('permission:manage_approvals')->name('admin.approvals');
+    Route::get('admin/vehicle-types', \App\Livewire\Admin\VehicleTypes::class)->middleware('permission:manage_vehicle_types')->name('admin.vehicle-types');
+    Route::get('admin/users', \App\Livewire\Admin\ManageUsers::class)->middleware('permission:view_users')->name('admin.users');
+    Route::get('admin/users/create-staff', \App\Livewire\Admin\CreateStaff::class)->middleware('permission:edit_users')->name('admin.users.create-staff');
+    Route::get('admin/users/{user}/edit', \App\Livewire\Admin\EditUser::class)->middleware('permission:edit_users')->name('admin.users.edit');
+    Route::get('admin/users/{user}/permissions', \App\Livewire\Admin\ManageStaffPermissions::class)->middleware('permission:edit_users')->name('admin.users.permissions');
+    Route::get('admin/packages', \App\Livewire\Admin\ManagePackages::class)->middleware('permission:manage_packages_edit')->name('admin.packages');
+    Route::get('admin/users/{user}/assign-package', \App\Livewire\Admin\AssignPackage::class)->middleware('permission:manage_packages_assign')->name('admin.users.assign-package');
+    Route::get('admin/settings', \App\Livewire\Admin\ManageSettings::class)->name('admin.settings');
+
+    // Page Management
+    Route::get('admin/pages', \App\Livewire\Admin\ManagePages::class)->name('admin.pages');
+    Route::get('admin/pages/create', \App\Livewire\Admin\PageForm::class)->name('admin.pages.create');
+    Route::get('admin/pages/{page}/edit', \App\Livewire\Admin\PageForm::class)->name('admin.pages.edit');
+
+    // Public Fleet Management
+    Route::get('admin/vehicles', \App\Livewire\Admin\PublicVehicleList::class)->middleware('permission:manage_vehicles')->name('admin.vehicles');
+    Route::get('admin/vehicles/create', \App\Livewire\Admin\PublicVehicleForm::class)->middleware('permission:manage_vehicles')->name('admin.vehicles.create');
+    Route::get('admin/vehicles/{vehicle}/edit', \App\Livewire\Admin\PublicVehicleForm::class)->middleware('permission:manage_vehicles')->name('admin.vehicles.edit');
 });
 
-// ========================================
-// 5. GUEST B2C
-// ========================================
-Route::get('/guest/leads', [App\Http\Controllers\Guest\BookingController::class, 'showLeadsForm'])->name('guest.leads');
-Route::post('/guest/leads', [App\Http\Controllers\Guest\BookingController::class, 'storeLeads']);
-Route::get('/guest/vehicles', [App\Http\Controllers\Guest\BookingController::class, 'showVehicles'])->name('guest.vehicles');
-
-// ========================================
-// 6. ADMIN PANEL – 100% WORKING (NO CONTROLLER NEEDED)
-// ========================================
-Route::prefix('admin')->name('admin.')->group(function () {
-
-    // Admin Login Page
-    Route::get('/login', function () {
-        if (auth('admin')->check()) {
-            return redirect()->route('admin.dashboard');
-        }
-        return view('admin.auth.login');
-    })->name('login');
-
-    // Handle Admin Login
-    Route::post('/login', function (Illuminate\Http\Request $request) {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
-
-        $user = App\Models\User::where('email', $request->email)
-                               ->whereIn('role', ['super_admin', 'operator'])
-                               ->first();
-
-        if ($user && Hash::check($request->password, $user->password_hash)) {
-            Auth::guard('admin')->login($user);
-            return redirect()->route('admin.dashboard');
-        }
-
-        return back()->withErrors(['email' => 'Invalid email or password']);
-    });
-
-    // Admin Logout
-    Route::post('/logout', function () {
-        Auth::guard('admin')->logout();
-        request()->session()->invalidate();
-        request()->session()->regenerateToken();
-        return redirect()->route('admin.login');
-    })->name('logout');
-
-    // All Protected Admin Routes
-    Route::middleware('auth:admin')->group(function () {
-        Route::get('/dashboard', function () {
-            return view('admin.dashboard');
-        })->name('dashboard');
-
-        // Payments
-        Route::get('/payments', [App\Http\Controllers\Admin\PaymentController::class, 'index'])->name('payments');
-
-        // Users Management
-        Route::get('/transporters', [App\Http\Controllers\Admin\UserController::class, 'transporters'])->name('transporters');
-        Route::get('/agents', [App\Http\Controllers\Admin\UserController::class, 'agents'])->name('agents');
-        Route::get('/users/{id}', [App\Http\Controllers\Admin\UserController::class, 'show'])->name('users.show');
-
-        // Vehicle Types
-        Route::get('/vehicle-types', [App\Http\Controllers\Admin\VehicleTypeController::class, 'index'])->name('vehicle-types');
-        Route::post('/vehicle-types', [App\Http\Controllers\Admin\VehicleTypeController::class, 'store'])->name('vehicle-types.store');
-        Route::put('/vehicle-types/{id}', [App\Http\Controllers\Admin\VehicleTypeController::class, 'update'])->name('vehicle-types.update');
-
-        // Company Listings
-        Route::get('/company-listings', [App\Http\Controllers\Admin\CompanyListingController::class, 'index'])->name('company-listings');
-        Route::post('/company-listings/{id}/approve', [App\Http\Controllers\Admin\CompanyListingController::class, 'approve'])->name('company-listings.approve');
-
-        // Settings
-        Route::get('/settings/email', [App\Http\Controllers\Admin\SettingsController::class, 'email'])->name('settings.email');
-        Route::post('/settings/email', [App\Http\Controllers\Admin\SettingsController::class, 'updateEmail']);
-    });
+// Transporter Routes
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::view('transporter/dashboard', 'transporter.dashboard')->name('transporter.dashboard');
+    Route::get('transporter/vehicles', \App\Livewire\Transporter\VehicleList::class)->name('transporter.vehicles');
+    Route::get('transporter/vehicles/create', \App\Livewire\Transporter\VehicleForm::class)->name('transporter.vehicles.create');
+    Route::get('transporter/vehicles/{vehicle}/edit', \App\Livewire\Transporter\VehicleForm::class)->name('transporter.vehicles.edit');
+    Route::get('transporter/buy-packages', \App\Livewire\Transporter\BuyPackages::class)->name('transporter.buy-packages');
 });
+
+// Agent Routes
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::view('agent/dashboard', 'agent.dashboard')->name('agent.dashboard');
+    Route::get('agent/tours', \App\Livewire\Agent\TourList::class)->name('agent.tours');
+    Route::get('agent/tours/create', \App\Livewire\Agent\TourForm::class)->name('agent.tours.create');
+    Route::get('agent/tours/{tour}/edit', \App\Livewire\Agent\TourForm::class)->name('agent.tours.edit');
+    Route::get('agent/search-vehicles', \App\Livewire\Agent\SearchVehicles::class)->name('agent.search-vehicles');
+    Route::get('agent/buy-packages', \App\Livewire\Transporter\BuyPackages::class)->name('agent.buy-packages');
+});
+
+require __DIR__ . '/auth.php';

@@ -2,132 +2,83 @@
 
 namespace App\Models;
 
-// ---------------------------------------------------------------------
-// IMPORTANT TRAITS
-// ---------------------------------------------------------------------
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Facades\Hash;
 
 class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
-    // =================================================================
-    // MASS ASSIGNABLE FIELDS
-    // =================================================================
     protected $fillable = [
         'name',
-        'phone',
+        'company_name',
+        'id_card_image',
+        'id_card_back_image',
+        'license_image',
+        'license_back_image',
         'email',
+        'phone',
         'city',
-        'password_hash',           // hum custom column use kar rahe hain
-        'role',                    // transporter | agent | super_admin | operator
-        'status',                  // active | suspended | pending
-        'subscription_ends_at',
-        'listing_limit',           // kitne vehicles list kar sakta hai
-        'credits',                 // future monetization ke liye
-        // Operator permissions (boolean)
-        'can_manage_transporters',
-        'can_manage_agents',
-        'can_manage_payments',
-        'can_manage_vehicle_types',
-        'can_manage_settings',
+        'password',
+        'role', // guest, transporter, agent, admin, operator
+        'status', // active, suspended
+        'operator_permissions', // JSON array
     ];
 
-    // =================================================================
-    // HIDDEN FIELDS (API / JSON response mein nahi dikhenge)
-    // =================================================================
     protected $hidden = [
-        'password_hash',
+        'password',
         'remember_token',
-        'password_reset_token',
-        'password_reset_expires_at',
     ];
 
-    // =================================================================
-    // CASTING (proper data types)
-    // =================================================================
     protected $casts = [
-        'subscription_ends_at'    => 'date',
-        'listing_limit'           => 'integer',
-        'credits'                 => 'integer',
-
-        // Operator boolean permissions
-        'can_manage_transporters' => 'boolean',
-        'can_manage_agents'       => 'boolean',
-        'can_manage_payments'     => 'boolean',
-        'can_manage_vehicle_types'=> 'boolean',
-        'can_manage_settings'     => 'boolean',
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+        'operator_permissions' => 'array',
     ];
 
-    // =================================================================
-    // PASSWORD MUTATOR (Laravel expects 'password', hum 'password_hash' use kar rahe hain)
-    // =================================================================
-    public function setPasswordAttribute($value)
+    // Helper Methods
+    public function isTransporter(): bool
     {
-        $this->attributes['password_hash'] = Hash::make($value);
+        return $this->role === 'transporter';
     }
 
-    // Optional: Agar kahin $user->password likha ho to bhi kaam kare
-    public function getPasswordAttribute()
+    public function isAgent(): bool
     {
-        return $this->password_hash;
+        return $this->role === 'agent';
     }
 
-    // =================================================================
-    // CUSTOM HELPER METHODS (Multi-role Guard ke liye ZAROORI)
-    // =================================================================
-    /**
-     * Return correct guard name based on user role
-     * Used in AuthController@login() and middleware
-     */
-    public function getAuthGuardName(): string
+    public function isAdmin(): bool
     {
-        return match ($this->role) {
-            'transporter' => 'transporter',
-            'agent'       => 'agent',
-            'super_admin',
-            'operator'    => 'admin',           // dono admin guard use karenge
-            default       => 'web',
-        };
+        return $this->role === 'admin';
     }
 
-    // Role checking helpers (optional lekin bohot kaam aate hain)
-    public function isTransporter(): bool { return $this->role === 'transporter'; }
-    public function isAgent(): bool       { return $this->role === 'agent'; }
-    public function isAdmin(): bool       { return in_array($this->role, ['super_admin', 'operator']); }
-    public function isSuperAdmin(): bool  { return $this->role === 'super_admin'; }
+    public function isOperator(): bool
+    {
+        return $this->role === 'operator';
+    }
 
-    // =================================================================
-    // RELATIONSHIPS (tumhare existing + thodi improvement)
-    // =================================================================
+    public function hasPermission(string $permission): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+        if (!$this->isOperator()) {
+            return false;
+        }
+        return in_array($permission, $this->operator_permissions ?? []);
+    }
+
+    // Relationships
     public function vehicles()
     {
-        return $this->hasMany(Vehicle::class, 'user_id');
+        return $this->hasMany(\App\Models\Vehicle::class);
     }
 
-    // Favorites: Agent → Vehicles (N:N pivot)
-    public function favorites()
+    public function tours()
     {
-        return $this->belongsToMany(Vehicle::class, 'favorites', 'agent_id', 'vehicle_id')
-                    ->withTimestamps();
+        return $this->hasMany(\App\Models\Tour::class);
     }
 
-    public function inquiries()
-    {
-        return $this->hasMany(Inquiry::class, 'agent_id'); // ya transporter_id — jaisa table ho
-    }
 
-    public function notifications()
-    {
-        return $this->hasMany(Notification::class, 'user_id');
-    }
-
-    // Optional: Payments, subscriptions, etc.
-    public function payments()
-    {
-        return $this->hasMany(Payment::class, 'user_id');
-    }
 }

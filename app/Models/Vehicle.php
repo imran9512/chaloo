@@ -2,49 +2,68 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Vehicle extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
-        'user_id', 'vehicle_type_id', 'seats', 'ac_status', 'city', 
-        'base_rate', 'driver_rate', 'condition', 'status', 
-        'available_in_days', 'special_notes', 'managed_by'
+        'user_id',
+        'vehicle_type_id',
+        'name',
+        'brand',
+        'model',
+        'year',
+        'registration_number',
+        'color',
+        'daily_rate',
+        'driver_fee',
+        'city',
+        'description',
+        'features',
+        'images',
+        'status', // available, booked, maintenance
+        'available_from_date',
+        'is_approved',
+        'is_company_managed',
+        'commission_percentage',
+        'base_daily_rate',
     ];
 
     protected $casts = [
-        'ac_status' => 'boolean',
-        'base_rate' => 'decimal:2',
-        'driver_rate' => 'decimal:2',
+        'year' => 'integer',
+        'daily_rate' => 'decimal:2',
+        'driver_fee' => 'decimal:2',
+        'features' => 'array',
+        'images' => 'array',
+        'available_from_date' => 'date',
+        'is_approved' => 'boolean',
+        'is_company_managed' => 'boolean',
+        'commission_percentage' => 'decimal:2',
+        'base_daily_rate' => 'decimal:2',
     ];
 
+    // Relationships
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    public function vehicleType()
+    public function type()
     {
-        return $this->belongsTo(VehicleType::class);
+        return $this->belongsTo(VehicleType::class, 'vehicle_type_id');
     }
 
-    public function photos()
+    // Scopes
+    public function scopeApproved($query)
     {
-        return $this->hasMany(VehiclePhoto::class);
+        return $query->where('is_approved', true);
     }
 
-    public function companyListing()
+    public function scopeAvailable($query)
     {
-        return $this->hasOne(CompanyListing::class);
-    }
-
-    public function favorites()
-    {
-        return $this->hasMany(Favorite::class);
-    }
-
-    public function inquiries()
-    {
-        return $this->hasMany(Inquiry::class);
+        return $query->where('status', 'available');
     }
 }

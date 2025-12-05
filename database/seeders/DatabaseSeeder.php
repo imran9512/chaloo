@@ -17,9 +17,31 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
+        // Admin User
         User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+            'name' => 'Admin User',
+            'email' => 'admin@chaloo.com',
+            'password' => bcrypt('password'),
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        // Transporter User
+        User::factory()->create([
+            'name' => 'Transporter User',
+            'email' => 'transporter@chaloo.com',
+            'password' => bcrypt('password'),
+            'role' => 'transporter',
+            'status' => 'active',
+        ]);
+
+        // Agent User
+        User::factory()->create([
+            'name' => 'Agent User',
+            'email' => 'agent@chaloo.com',
+            'password' => bcrypt('password'),
+            'role' => 'agent',
+            'status' => 'active',
         ]);
     }
 }
